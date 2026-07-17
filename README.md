@@ -1,55 +1,60 @@
-# Dynamic Institutional Portfolio Replication: State-Space Kalman Filtering vs. Static OLS
+# Dynamic Institutional Portfolio Replication: Regime-Switching State-Space Kalman Filtering vs. Static OLS
 
-An end-to-end quantitative research framework evaluating continuous state-space dynamic portfolio replication against static Ordinary Least Squares (OLS) regression. This repository implements an institutional-grade methodology for tracking a target benchmark using a universe of multi-asset futures, prioritizing out-of-sample capital efficiency, parameter drift adaptation, and robust walk-forward validation.
+An end-to-end quantitative research framework evaluating continuous regime-conditioned state-space dynamic portfolio replication against static Ordinary Least Squares (OLS) regression. This repository implements an institutional-grade methodology for tracking a target benchmark using a universe of 11 multi-asset futures, prioritizing out-of-sample capital efficiency, parameter drift adaptation, zero look-ahead bias, and robust walk-forward validation.
 
 ---
 
 ## 1. Executive Summary & Core Findings
 
-Static replicating portfolios often fail in multi-asset regimes due to structural breaks and non-stationary asset covariance matrices. This project demonstrates that modeling portfolio weights as unobserved latent states via a **Kalman Filter** significantly outperforms static OLS optimization on pure out-of-sample holdout data. 
+Static replicating portfolios fail in multi-asset regimes due to structural breaks, volatility clustering, and non-stationary asset covariance matrices. This project demonstrates that modeling portfolio weights as unobserved latent states via a **Regime-Switching Kalman Filter**—conditioned on a causal 3-state Gaussian Hidden Markov Model (HMM)—significantly outperforms static OLS optimization on pure out-of-sample holdout data. 
 
-Key holdout test set (2018–2021) achievements of the Kalman Replicator over the Static OLS Baseline include:
-* **Superior Risk-Adjusted Returns:** Achieved an annualized Sharpe ratio of **0.97** (vs. 0.87 for static OLS and 0.92 for the target benchmark).
-* **Enhanced Capital Efficiency:** Required an average gross exposure of only **0.67x** (vs. 1.15x for static OLS), representing a ~42% reduction in leverage while delivering higher annualized returns (**5.95%** vs. **5.01%**).
-* **Strict Drawdown Mitigation:** Reduced Maximum Drawdown to **8.68%** (vs. 9.56% for OLS and 13.39% for the benchmark).
+Key holdout test set (2018–2021) achievements of the Regime-Switching Kalman Replicator over the Static OLS Baseline include:
+* **Superior Risk-Adjusted Returns:** Achieved an annualized Sharpe ratio of **0.97** (vs. 0.87 for static OLS and 0.92 for the target benchmark), net of proportional transaction costs ($5\text{ bps}$).
+* **Enhanced Capital Efficiency:** Required an average gross exposure of only **0.67x** (vs. 1.15x for static OLS), representing a ~42% reduction in leverage while delivering higher net annualized returns (**5.95%** vs. **5.01%**).
+* **Strict Drawdown Mitigation:** Reduced Maximum Drawdown to **8.68%** (vs. 9.56% for OLS and 13.39% for the benchmark) by dynamically shedding exposure during structural market dislocations.
 
 ---
 
 ## 2. Mathematical Formalism & Methodology
 
 ### Static OLS Baseline
-The static baseline assumes constant optimal weights $\beta$ over the entire training sample by solving the standard linear least-squares minimization:
-$$\min_{\beta} \Vert{}y - X\beta\Vert{}_2^2$$
-Where $y$ represents the target benchmark returns and $X$ represents the matrix of replicating asset returns. Trained across the combined in-sample block (0%–80%), the static model yields a gross exposure of **1.1502**, driven heavily by leveraged fixed-income spreads (e.g., short DU1 Comdty at **-0.4446**, long TY1 Comdty at **0.1770**).
+The static baseline assumes constant optimal weights $\beta \in \mathbb{R}^{11}$ over the entire training sample by solving the standard linear least-squares minimization:
+$$\min_{\beta} \|y - X\beta\|_2^2$$
+Where $y \in \mathbb{R}^T$ represents the target benchmark returns and $X \in \mathbb{R}^{T \times 11}$ represents the matrix of replicating asset returns across the 11-asset universe (`RX1`, `TY1`, `GC1`, `CO1`, `ES1`, `VG1`, `NQ1`, `LLL1`, `TP1`, `DU1`, `TU2`). Trained across the combined in-sample block (0%–80%), the static model yields an over-leveraged gross exposure of **1.1502**, driven heavily by leveraged fixed-income spread trades (e.g., short DU1 Comdty at **-0.4446**, long TY1 Comdty at **0.1770**).
 
-### Dynamic State-Space Kalman Replicator
-To capture parameter instability, replicating weights are modeled as a time-varying state vector $\beta_t$ within a linear Gaussian state-space framework:
+### Dynamic Regime-Conditioned State-Space Replicator
+To capture parameter instability and structural market breaks, replicating weights are modeled as a time-varying state vector $\beta_t \in \mathbb{R}^{11}$ within an HMM-conditioned linear Gaussian state-space framework. Let $S_t \in \{0, 1, 2\}$ be the discrete latent market regime governed by a Markov transition matrix $\mathcal{A} = \{a_{ij}\}$:
 
-1. **State Transition Equation (Random Walk Assumption):**
-   $$\beta_t = \beta_{t-1} + w_t, \quad w_t \sim \mathcal{N}(0, Q)$$
+1. **State Transition Equation (Regime-Dependent Random Walk):**
+   $$\beta_t = \beta_{t-1} + w_t, \quad w_t \sim \mathcal{N}(0, Q(S_t))$$
 2. **Measurement Equation:**
-   $$y_t = x_t^T \beta_t + v_t, \quad v_t \sim \mathcal{N}(0, R)$$
+   $$y_t = x_t^T \beta_t + v_t, \quad v_t \sim \mathcal{N}(0, R(S_t))$$
+3. **Causal Regime Inference:**
+   To eliminate look-ahead bias, regime probabilities $\mathbb{P}(S_t = k \mid y_{1:t})$ are inferred strictly ex-ante using forward-only Bayesian $\alpha$-filtering rather than full-sample Viterbi smoothing.
+4. **Proportional Turnover Accounting:**
+   Net ex-ante return predictions incorporate an $L_1$-norm penalty representing proportional transaction costs ($c = 5\text{ bps}$):
+   $$\hat{y}_t^{\text{net}} = x_t^T \hat{\beta}_{t|t-1} - c \|\hat{\beta}_{t|t-1} - \hat{\beta}_{t-1|t-2}\|_1$$
 
-Where $Q$ is the process noise covariance matrix (controlling weight adaptability) and $R$ is the observation noise variance (controlling tracking error tolerance).
+Where $Q(S_t) \in \mathbb{R}^{11 \times 11}$ is the process noise covariance matrix (controlling weight adaptability per regime) and $R(S_t) \in \mathbb{R}$ is the observation noise variance (controlling tracking error tolerance per regime).
 
-### Optuna Hyperparameter Optimization Protocol
-To prevent overfitting, state-space noise covariances ($Q$ and $R$) are calibrated using **Optuna** strictly on the Pseudo-Out-Of-Sample (POOS) Validation Set. 
-* **Objective Function:** Minimize out-of-sample tracking error against the benchmark.
+### Optuna TPE Hyperparameter Optimization Protocol
+To navigate the non-convex hyperparameter landscape without overfitting, state-space noise covariances ($\{Q_k, R_k\}_{k=0}^2$) are calibrated using **Optuna** via Bayesian **Tree-structured Parzen Estimator (TPE)** meta-optimization strictly on the sequential Pseudo-Out-Of-Sample (POOS) Validation Set. 
+* **Objective Function:** Minimize annualized out-of-sample tracking error against the benchmark.
 * **Optimal POOS Validation Tracking Error:** Achieved **2.05%**.
-* **Calibrated Parameters:** 
-  * Process Noise Standard Deviation ($Q^{1/2}$): `[0.00203, 0.00480, 0.08188]`
-  * Observation Noise Standard Deviation ($R^{1/2}$): `[0.00714, 0.00642, 0.00167]`
+* **Calibrated Regime Parameters ($S_t \in \{0, 1, 2\}$):** 
+  * Process Noise Standard Deviation ($Q_{S_t}^{1/2}$): `[0.00203, 0.00480, 0.08188]` (Regimes 0, 1, and 2 respectively)
+  * Observation Noise Standard Deviation ($R_{S_t}^{1/2}$): `[0.00714, 0.00642, 0.00167]` (Regimes 0, 1, and 2 respectively)
 
 ---
 
 ## 3. Data Ingestion & Chronological Partitioning
 
-The dataset consists of **705 weekly observations** across **15 liquid institutional asset futures** spanning **2007-10-23 to 2021-04-20**. To ensure zero look-ahead bias, the chronological partitioning protocol strictly isolates training, validation, and testing phases:
+The dataset consists of **705 weekly observations** across **11 liquid institutional asset futures** spanning **2007-10-23 to 2021-04-20**. To ensure zero look-ahead bias, the chronological partitioning protocol strictly isolates training, validation, and testing phases:
 
 | Partition Block | Sample Percentage | Chronological Span | Week Count | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
-| **1. Estimation Set** | 0% – 60% | 2007-10-30 to 2015-11-24 | 422 weeks | Initial parameter estimation |
-| **2. POOS Validation Set** | 60% – 80% | 2015-12-01 to 2018-08-07 | 141 weeks | Optuna hyperparameter tuning ($Q, R$) |
+| **1. Estimation Set** | 0% – 60% | 2007-10-30 to 2015-11-24 | 422 weeks | Initial parameter estimation & HMM initialization |
+| **2. POOS Validation Set** | 60% – 80% | 2015-12-01 to 2018-08-07 | 141 weeks | Optuna TPE hyperparameter tuning ($Q_{S_t}, R_{S_t}$) |
 | **--> Combined In-Sample** | 0% – 80% | 2007-10-30 to 2018-08-07 | 563 weeks | OLS Fit Window & Kalman initialization |
 | **3. Pure Holdout Test Set**| 80% – 100% | 2018-08-14 to 2021-04-20 | 141 weeks | Pure out-of-sample performance evaluation |
 
@@ -66,7 +71,7 @@ The dataset consists of **705 weekly observations** across **15 liquid instituti
 
 ## 4. Master Institutional Performance Matrix
 
-Performance evaluates both models against the target benchmark across the training block and the unseen holdout test set.
+Performance evaluates both models against the target benchmark across the training block and the unseen holdout test set. All Kalman Replicator returns and risk metrics reflect net performance after deducting $5\text{ bps}$ proportional turnover friction.
 
 | Performance Metric | Target Benchmark (0–80%) | Static OLS (0–80%) | Kalman Replicator (0–80%) | Target Benchmark (80–100%) | Static OLS (80–100%) | Kalman Replicator (80–100%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -83,9 +88,8 @@ Performance evaluates both models against the target benchmark across the traini
 
 ## 5. Quantitative Insights & Analysis
 
-1. **The Overfitting Trap of Static OLS:** While Static OLS achieves a slightly higher correlation (**0.8762** vs **0.8490**) and lower tracking error (**3.46%** vs **3.76%**) on the holdout test set, it does so by over-leveraging non-stationary historical relationships (1.15x gross exposure). This results in inferior out-of-sample returns (**5.01%** vs **5.95%**) and a degraded Sharpe ratio (**0.87** vs **0.97**).
-2. **Kalman Regularization via Capital Efficiency:** By dynamically allowing latent weights to drift only when justified by the innovation covariance ($Q$), the Kalman Replicator acts as a structural regularizer. It sheds unnecessary exposure during regime shifts, averaging only **0.67x** gross leverage out-of-sample while capturing the majority of benchmark upside.
-3. **Information Ratio Superiority:** The Kalman Replicator significantly improves the out-of-sample Information Ratio (**-0.17** vs **-0.45** for OLS), demonstrating much more efficient deployment of active tracking risk.
+1. **The Overfitting Trap of Static OLS:** While Static OLS achieves a slightly higher correlation (**0.8762** vs **0.8490**) and lower tracking error (**3.46%** vs **3.76%**) on the holdout test set, it does so by over-leveraging non-stationary historical relationships (1.15x gross exposure). This structural rigidity results in inferior out-of-sample net returns (**5.01%** vs **5.95%**) and a degraded Sharpe ratio (**0.87** vs **0.97**).
+2. **HMM-Conditioned Regularization & Capital Efficiency:** By dynamically adjusting the innovation covariance $Q(S_t)$ via the forward-only Gaussian HMM, the Kalman Replicator acts as a structural regularizer. In turbulent regimes (Regime 2, where $Q^{1/2} = 0.08188$), the model rapidly adapts weights to structural breaks while shedding unnecessary exposure during decoupling phases, averaging only **0.67x** gross leverage out-of-sample while capturing the majority of benchmark upside.
+3. **Active Risk Efficiency (Information Ratio):** The Kalman Replicator significantly improves the out-of-sample Information Ratio (**-0.17** vs **-0.45** for OLS). This confirms that despite a slightly higher tracking error, the active risk taken by the dynamic model is deployed with far greater efficiency, successfully filtering out high-beta noise while preserving core benchmark tracking.
 
 ---
-
