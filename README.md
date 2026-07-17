@@ -44,7 +44,7 @@ To prevent overfitting, state-space noise covariances ($Q$ and $R$) are calibrat
 
 ## 3. Data Ingestion & Chronological Partitioning
 
-The dataset consists of **705 weekly observations** across **15 liquid institutional asset futures** spanning **2007-10-23 to 2021-04-20**[cite: 1]. To ensure zero look-ahead bias, the chronological partitioning protocol strictly isolates training, validation, and testing phases:
+The dataset consists of **705 weekly observations** across **15 liquid institutional asset futures** spanning **2007-10-23 to 2021-04-20**. To ensure zero look-ahead bias, the chronological partitioning protocol strictly isolates training, validation, and testing phases:
 
 | Partition Block | Sample Percentage | Chronological Span | Week Count | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
@@ -66,7 +66,7 @@ The dataset consists of **705 weekly observations** across **15 liquid instituti
 
 ## 4. Master Institutional Performance Matrix
 
-Performance evaluates both models against the target benchmark across the training block and the unseen holdout test set[cite: 1].
+Performance evaluates both models against the target benchmark across the training block and the unseen holdout test set.
 
 | Performance Metric | Target Benchmark (0–80%) | Static OLS (0–80%) | Kalman Replicator (0–80%) | Target Benchmark (80–100%) | Static OLS (80–100%) | Kalman Replicator (80–100%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
